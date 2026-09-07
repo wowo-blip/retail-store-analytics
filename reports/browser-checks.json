@@ -1,0 +1,42 @@
+{
+  "results": [
+    {
+      "scenario": "all",
+      "status": "passed",
+      "rows": 1000,
+      "revenue": 322966.749
+    },
+    {
+      "scenario": "yangon_member",
+      "status": "passed",
+      "rows": 167,
+      "revenue": 53637.4755
+    },
+    {
+      "scenario": "feb_food",
+      "status": "passed",
+      "rows": 14,
+      "revenue": 5081.3805
+    },
+    {
+      "scenario": "filtered_csv_download",
+      "status": "passed",
+      "rows": 14
+    },
+    {
+      "scenario": "empty_selection",
+      "status": "passed"
+    },
+    {
+      "scenario": "all",
+      "status": "passed",
+      "rows": 1000,
+      "revenue": 322966.749
+    },
+    {
+      "scenario": "invalid_date_range",
+      "status": "passed"
+    }
+  ],
+  "page_errors": []
+}

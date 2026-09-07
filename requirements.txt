@@ -1,0 +1,10 @@
+numpy==1.26.4
+pandas==2.0.1
+openpyxl==3.1.5
+plotly==5.13.1
+streamlit==1.25.0
+SQLAlchemy>=2.0,<2.1
+PyMySQL[rsa]>=1.1,<2
+python-dotenv>=1.0,<2
+pytest>=8,<9
+wheel==0.45.1

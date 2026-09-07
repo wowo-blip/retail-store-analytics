@@ -1,0 +1,22 @@
+{
+  "rows": 1000,
+  "checks": {
+    "missing_required": 0,
+    "duplicate_invoice": 0,
+    "nonfinite_numeric": 0,
+    "invalid_quantity": 0,
+    "negative_amount": 0,
+    "invalid_rating": 0,
+    "cost_arithmetic": 0,
+    "tax_arithmetic": 0,
+    "total_arithmetic": 0,
+    "invalid_customer_type": 0,
+    "invalid_branch": 0,
+    "branch_city_mapping": 0
+  },
+  "invalid_rows": 0,
+  "passed": true,
+  "generated_at": "2026-09-07T04:19:50.992063+00:00",
+  "source_sha256": "345f5ebec9f6a8f681507ed9e6b3ca8655b8c4e0f36a79e5f8603447c495c342",
+  "source_file": "supermarket_sales.xlsx"
+}
