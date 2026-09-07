@@ -1,8 +1,10 @@
-# 零售门店经营分析与交互式看板｜个人项目
+# 零售门店经营分析与交互式看板
 
 围绕“门店销售差异来自哪里、差异有多不确定”构建完整分析流程：**Excel → 数据质量检查 → MySQL → SQL 指标 → 统计分析 → 交互看板 → 报告**。
 
-以 [Sven-Bo 的销售看板](https://github.com/Sven-Bo/streamlit-sales-dashboard)为学习起点，沿用其附带的销售样例数据。本项目重新实现数据库管道、指标 SQL、差异分解、Bootstrap 统计分析、中文看板和验证代码。项目在 AI 编程助手协助下完成，应根据自己理解和实际负责内容介绍。
+面向零售门店经营对比的个人数据分析项目，包含数据库管道、指标 SQL、差异分解、Bootstrap 统计分析、中文看板和验证代码。开发过程中使用 AI 编程助手作为辅助工具。
+
+销售样例数据来自 [Sven-Bo 的销售看板](https://github.com/Sven-Bo/streamlit-sales-dashboard)，该项目也作为早期界面参考。数据版本、字段及使用范围见 [数据来源与字典](data/SOURCE.md)。
 
 ![经营总览](reports/dashboard-overview.png)
 
@@ -18,7 +20,7 @@
 
 技术栈：Python 3.11、Pandas、NumPy、MySQL 8.4、SQLAlchemy、PyMySQL、Plotly、Streamlit、pytest。
 
-## 当前电脑启动
+## 启动项目
 
 双击 `start-project.cmd`，或运行：
 
@@ -36,7 +38,7 @@
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-## 在另一台 Windows 电脑首次配置
+## 首次配置（Windows）
 
 1. 安装 Python 3.11 和 MySQL 8.4，将 `mysqld.exe` 所在 bin 目录加入 PATH。
 2. 在本项目目录创建环境并安装已锁定依赖：
@@ -64,8 +66,8 @@ data/SOURCE.md            数据来源、哈希及数据字典
 reports/                  真实运行结果、CSV、报告和截图
 scripts/                  数据库配置、启动和停止工具
 tests/test_pipeline.py    核心逻辑与只读数据库集成测试
-改造操作记录.md           每一步执行内容与命令
-docs/                     指标口径、统计方法、简历与面试材料
+docs/项目设计.md           分层结构、数据流程与验证方式
+docs/指标与统计方法.md     指标口径、统计假设与适用边界
 ```
 
 ## 分析发现
@@ -74,4 +76,4 @@ docs/                     指标口径、统计方法、简历与面试材料
 三组门店均值差的 95% 日期簇 Bootstrap 区间均包含 0，不能凭排名认定门店能力差异。详见 [经营分析报告](reports/经营分析报告.md)。
 
 日均销售额以筛选期日历天数为分母，不是实际营业天数。样本无客户唯一 ID，且仅有约三个月数据，不计算复购、留存、年度季节性或营销 ROI。
-来源和成本口径未独立核实，不声称真实业务落地、利润改善或销售增长。统计区间用于探索，未做多重比较校正，也不作因果解释。
+样本采集机制和成本口径未核实，分析结果仅适用于当前样本。统计区间用于探索，未做多重比较校正，也不作因果解释。
