@@ -90,11 +90,12 @@ db=None;backend='demo'
 if data_mode!='demo':
     try:
         db=get_db();meta=get_mysql_metadata(db);backend='mysql'
-    except Exception:
-        logging.exception('MySQL 后端初始化失败')
+    except Exception as exc:
         if data_mode=='mysql':
+            logging.exception('MySQL 后端初始化失败')
             st.error('无法连接项目 MySQL；请检查数据库和 ETL 是否已完成。')
             st.stop()
+        logging.info('MySQL 未配置或不可用，自动切换 DuckDB 演示后端：%s',exc)
 if backend=='demo':
     try:
         meta=get_demo_metadata()

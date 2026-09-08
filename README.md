@@ -1,6 +1,7 @@
 # Online Retail II 收入质量、客户留存与退货分析
 
 [![CI](https://github.com/wowo-blip/retail-store-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/wowo-blip/retail-store-analytics/actions/workflows/ci.yml)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://retail-store-analytics-dbhorpglfxnaadggmnacpe.streamlit.app/)
 
 围绕“销售额有多少最终转化为净收入、收入集中在哪里、哪些客户与商品值得优先调查”构建端到端零售分析系统：
 
