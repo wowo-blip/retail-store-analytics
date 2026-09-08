@@ -33,8 +33,10 @@ async function openDashboard(page) {
       await page.getByText('当前为 DuckDB + Parquet 免 MySQL 演示',{exact:false}).waitFor({timeout:45000});
     }
     await page.getByText('£19.01M',{exact:true}).waitFor({timeout:45000});
+    assert.equal(await page.getByText('Failed to format the number',{exact:false}).count(),0);
     await page.getByRole('tab',{name:'数据质量',exact:true}).click();
     await page.getByRole('button',{name:'下载审计样本 CSV',exact:true}).waitFor({timeout:45000});
+    assert.equal(await page.getByText('Failed to format the number',{exact:false}).count(),0);
     assert.equal(await page.locator('[data-testid="stException"]').count(),0);
     assert.deepEqual(pageErrors,[]);
     console.log(JSON.stringify({status:'passed',mode:expectedMode,pageErrors}));

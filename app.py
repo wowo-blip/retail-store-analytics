@@ -194,8 +194,8 @@ with overview:
         table.columns=['国家','净收入','净收入占比','退货金额率','销售订单']
         st.dataframe(table,use_container_width=True,hide_index=True,column_config={
             '净收入':st.column_config.NumberColumn(format='£%.2f'),
-            '净收入占比':st.column_config.NumberColumn(format='%.2%%'),
-            '退货金额率':st.column_config.NumberColumn(format='%.2%%'),
+            '净收入占比':st.column_config.NumberColumn(format='%.2f%%'),
+            '退货金额率':st.column_config.NumberColumn(format='%.2f%%'),
         })
         st.download_button('下载国家指标 CSV',csv_bytes(country_metrics),'country-metrics.csv','text/csv')
 
@@ -300,7 +300,7 @@ with quality_tab:
         for name,value in quality['observations'].items()
     ])
     st.dataframe(observations,use_container_width=True,hide_index=True,column_config={
-        '占原始数据':st.column_config.NumberColumn(format='%.2%%'),
+        '占原始数据':st.column_config.NumberColumn(format='%.2f%%'),
     })
     st.markdown('数据由 UCI Machine Learning Repository 发布，许可证为 **CC BY 4.0**，数据集 DOI：`10.24432/C5CG6D`。原始 Excel 不提交到仓库，由下载脚本从官方地址获取并校验固定 SHA-256；仓库仅保留可审计的处理后 Parquet。')
     st.caption(f'源文件 SHA-256：{quality["source_sha256"]} · 数据期：{quality["date_min"]} 至 {quality["date_max"]}')
