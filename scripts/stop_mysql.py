@@ -13,6 +13,9 @@ else:
     with conn:
         with conn.cursor() as cur:
             cur.execute('SELECT @@datadir')
-            assert Path(cur.fetchone()[0]).resolve()==(ROOT/'.runtime/mysql-data').resolve()
+            actual=Path(cur.fetchone()[0]).resolve()
+            expected=(ROOT/'.runtime/mysql-data').resolve()
+            if actual!=expected:
+                raise RuntimeError(f'拒绝停止非项目实例：数据目录应为 {expected}，实际为 {actual}')
             cur.execute('SHUTDOWN')
     print('Project MySQL stopped safely.')

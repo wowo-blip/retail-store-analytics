@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, URL
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / 'data/raw/supermarket_sales.xlsx'
+SOURCE_URL = 'https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip'
+SOURCE_ZIP_SHA256 = '572e36277c2390fbfde10664750731e0a86f55e33470d91919085f0408e67bfb'
+SOURCE_ZIP = ROOT / '.runtime/online-retail-ii.zip'
+SOURCE = ROOT / 'data/raw/online_retail_II.xlsx'
+PROCESSED = ROOT / 'data/processed/retail_lines.parquet'
 REPORTS = ROOT / 'reports'
 load_dotenv(ROOT / '.env')
 

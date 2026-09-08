@@ -29,6 +29,7 @@ def main():
             if listening(3307):break
             time.sleep(.5)
     subprocess.run([sys.executable,str(ROOT/'scripts/bootstrap_db.py')],check=True,cwd=ROOT)
+    subprocess.run([sys.executable,str(ROOT/'scripts/download_data.py')],check=True,cwd=ROOT)
     subprocess.run([sys.executable,'-m','retail.etl'],check=True,cwd=ROOT)
     subprocess.run([sys.executable,'-m','retail.report'],check=True,cwd=ROOT)
     print('配置完成。执行 start-project.cmd 启动看板。')

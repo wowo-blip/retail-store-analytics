@@ -6,5 +6,6 @@ streamlit==1.25.0
 SQLAlchemy>=2.0,<2.1
 PyMySQL[rsa]>=1.1,<2
 python-dotenv>=1.0,<2
+duckdb>=1.5,<1.6
 pytest>=8,<9
 wheel==0.45.1

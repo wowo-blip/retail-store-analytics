@@ -1,0 +1,47 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: local-root-password
+      MYSQL_DATABASE: retail_analytics
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql-init.sql:/docker-entrypoint-initdb.d/10-users.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-plocal-root-password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  etl:
+    build: .
+    command: ["sh", "-c", "python scripts/download_data.py && python -m retail.etl && python -m retail.report"]
+    environment: &database-environment
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: retail_analytics
+      MYSQL_USER: retail_reader
+      MYSQL_PASSWORD: local-reader-password
+      MYSQL_ETL_USER: retail_etl
+      MYSQL_ETL_PASSWORD: local-etl-password
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
+  dashboard:
+    build: .
+    environment:
+      <<: *database-environment
+      RETAIL_DATA_MODE: mysql
+    ports:
+      - "8502:8501"
+    depends_on:
+      etl:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  mysql-data:

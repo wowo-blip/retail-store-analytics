@@ -1,47 +1,68 @@
-# 零售门店经营分析与交互式看板
+# Online Retail II 收入质量、客户留存与退货分析
 
-围绕“门店销售差异来自哪里、差异有多不确定”构建完整分析流程：**Excel → 数据质量检查 → MySQL → SQL 指标 → 统计分析 → 交互看板 → 报告**。
+[![CI](https://github.com/wowo-blip/retail-store-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/wowo-blip/retail-store-analytics/actions/workflows/ci.yml)
 
-面向零售门店经营对比的个人数据分析项目，包含数据库管道、指标 SQL、差异分解、Bootstrap 统计分析、中文看板和验证代码。开发过程中使用 AI 编程助手作为辅助工具。
+围绕“销售额有多少最终转化为净收入、收入集中在哪里、哪些客户与商品值得优先调查”构建端到端零售分析系统：
 
-销售样例数据来自 [Sven-Bo 的销售看板](https://github.com/Sven-Bo/streamlit-sales-dashboard)，该项目也作为早期界面参考。数据版本、字段及使用范围见 [数据来源与字典](data/SOURCE.md)。
+**UCI 官方下载与哈希校验 → 数据质量画像 → Parquet → MySQL → SQL 指标 → RFM / Cohort / Wilson 区间 → Streamlit 看板 → CI 浏览器验证**
+
+数据包含 1,067,371 条 2009—2011 年英国在线零售行级记录。项目保留取消单、负数量、重复、缺失客户 ID 和非正价格等原始事实，通过公开规则区分销售、退货和经营指标排除行。
 
 ![经营总览](reports/dashboard-overview.png)
 
-## 已实现
+## 核心发现
 
-- 自动校验 1000 条交易的缺失、重复编号、数值范围、税额及金额关系；失败时不写业务表。
-- MySQL 8.4 专用实例、DECIMAL 金额、数据库事务、来源哈希、重复导入对账；只读看板账户与导入账户分离。
-- SQL 聚合、窗口函数排名和品类占比；统一日期/门店/客户类型/品类筛选。
-- 6 项 KPI、每日趋势与 7 日均线、城市×品类热力图、交易金额分布和月份比较。
-- 销售额对称分解、统一品类权重均值、最高 1% 交易敏感性分析。
-- 5000 次共同日期簇 Bootstrap，7 日循环移动块敏感性检查；固定随机种子，样本不足时不输出区间。
-- 筛选后 CSV 下载、全样本分析报告、数据字典及自动验证。
+- 销售额 £20.48M，退货金额 £1.46M，净收入 £19.01M；退货金额相当于销售额的 7.14%。
+- 英国贡献 84.91% 的净收入，国际市场必须单独观察，避免被英国体量掩盖。
+- 在净收入为正的已识别客户中，72.71% 至少有两个销售发票；收入前 10% 客户贡献 63.02%。
+- 最早 cohort 的次月活跃率为 35.29%；“活跃”指当月再次购买，不要求逐月连续。
+- 商品与市场退货比较同时展示分母，并对市场退货相关发票占比计算 95% Wilson 区间，避免把小样本极端比例当作稳定风险。
 
-技术栈：Python 3.11、Pandas、NumPy、MySQL 8.4、SQLAlchemy、PyMySQL、Plotly、Streamlit、pytest。
+这些结果是描述性证据，不包装成因果结论或“提升销售额”的实际效果。完整口径见 [经营分析报告](reports/经营分析报告.md)。
 
-## 启动项目
+## 工程实现
 
-双击 `start-project.cmd`，或运行：
+- 固定 UCI ZIP 与 Excel SHA-256；下载文件不匹配即停止流程。
+- 106 万行 Excel 分表读取、字段标准化、异常画像和 Zstandard Parquet 输出。
+- MySQL 8.4 事务批量入库；失败时全量回滚，导入后对账行数、销售行和退货行。
+- ETL 与看板账户分离；看板账户仅有 `SELECT` 权限。
+- MySQL 是工程主链路；DuckDB 直接查询 12.8 MB Parquet 作为免 MySQL 在线演示后端。
+- 自动测试逐表核对 MySQL 与 DuckDB 的 KPI、月份、国家、商品、客户和 cohort 结果。
+- GitHub Actions 在 Linux + MySQL 8.4 上执行下载、ETL、报告、测试和真实浏览器冒烟检查。
+- Docker Compose 依次启动 MySQL、一次性 ETL 和只读 Streamlit 看板。
+
+技术栈：Python 3.11、Pandas、PyArrow、DuckDB、MySQL 8.4、SQLAlchemy、PyMySQL、Plotly、Streamlit、pytest、Playwright、Docker。
+
+## 快速查看
+
+无需 MySQL，直接使用仓库内处理后 Parquet：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\start_local.py
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+$env:RETAIL_DATA_MODE='demo'
+.\.venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-打开 http://127.0.0.1:8502 。项目 MySQL 在 127.0.0.1:3307；数据目录为 `.runtime/mysql-data`。双击 `stop-project.cmd` 可停止本项目进程。
+Linux / macOS 将最后两行改为：
 
-完整重算：
-
-```powershell
-.\.venv\Scripts\python.exe -m retail.etl
-.\.venv\Scripts\python.exe -m retail.report
-.\.venv\Scripts\python.exe -m pytest -q
+```bash
+RETAIL_DATA_MODE=demo .venv/bin/python -m streamlit run app.py
 ```
 
-## 首次配置（Windows）
+## 完整 MySQL 流程
 
-1. 安装 Python 3.11 和 MySQL 8.4，将 `mysqld.exe` 所在 bin 目录加入 PATH。
-2. 在本项目目录创建环境并安装已锁定依赖：
+跨平台推荐使用 Docker Desktop：
+
+```bash
+docker compose up --build
+```
+
+打开 http://127.0.0.1:8502 。Compose 会下载并校验 UCI 数据、启动 MySQL 8.4、以 ETL 账户导入，再以只读账户启动看板。
+
+停止容器使用 `docker compose down`。如明确需要删除本地数据库卷，再使用 `docker compose down -v`。
+
+Windows 原生环境需安装 Python 3.11 和 MySQL 8.4，并将 `mysqld.exe` 加入 PATH：
 
 ```powershell
 python -m venv .venv
@@ -50,30 +71,49 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts\start_local.py
 ```
 
-脚本要求 3307、8502 可用。首次初始化只针对本项目的新数据目录，并生成本地随机数据库密码。不要提交 `.env`、`.runtime` 或 `.venv`；Git 忽略规则已配置。环境应在目标电脑重建。
+完整重算：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\download_data.py
+.\.venv\Scripts\python.exe -m retail.etl
+.\.venv\Scripts\python.exe -m retail.report
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## 数据与许可
+
+数据由 UCI Machine Learning Repository 发布，创建者为 Daqing Chen，许可证为 CC BY 4.0，DOI 为 [10.24432/C5CG6D](https://doi.org/10.24432/C5CG6D)。原始 Excel 不提交到仓库；处理后 Parquet 继续遵循 CC BY 4.0。
+
+项目代码和文档采用 MIT 许可证。完整署名、哈希、字段字典、质量画像和分类规则见 [数据来源与处理口径](data/SOURCE.md)。
 
 ## 目录
 
 ```text
-app.py                    中文交互看板
-retail/etl.py              读取、校验、事务导入与对账
-retail/queries.py          安全参数绑定与统一查询
-retail/statistics.py       差异分解、Bootstrap、敏感性分析
-retail/report.py           从数据库生成报告
-sql/schema.sql            数据表、约束、索引
-sql/metrics.sql           KPI、窗口函数、趋势及明细查询
-data/SOURCE.md            数据来源、哈希及数据字典
-reports/                  真实运行结果、CSV、报告和截图
-scripts/                  数据库配置、启动和停止工具
-tests/test_pipeline.py    核心逻辑与只读数据库集成测试
-docs/项目设计.md           分层结构、数据流程与验证方式
-docs/指标与统计方法.md     指标口径、统计假设与适用边界
+app.py                              中文交互看板
+retail/etl.py                       Excel 校验、分类、Parquet 与 MySQL 事务导入
+retail/queries.py                   MySQL 参数绑定与指标查询
+retail/demo.py                      DuckDB / Parquet 演示查询
+retail/statistics.py                Wilson 区间、RFM、cohort 与集中度
+retail/report.py                    可引用报告和结果表生成
+sql/schema.sql                      事实表、约束和索引
+sql/metrics.sql                     KPI、市场、商品、客户和 cohort SQL
+data/processed/retail_lines.parquet 处理后演示快照
+data/SOURCE.md                      来源、许可、哈希和数据口径
+tests/test_pipeline.py              数据、SQL、统计和双后端对账测试
+tests/dashboard-smoke.cjs           真实浏览器冒烟测试
 ```
 
-## 分析发现
+## 分析边界
 
-全样本销售额 322966.7490，1000 笔交易、5510 件商品。Naypyitaw 销售额最高，但其交易笔数少于 Yangon；算术分解显示较高平均交易金额抵消了交易笔数较少的差额。
-三组门店均值差的 95% 日期簇 Bootstrap 区间均包含 0，不能凭排名认定门店能力差异。详见 [经营分析报告](reports/经营分析报告.md)。
+- 数据来自一家匿名英国非门店零售商，时间为 2009—2011 年，不代表当前行业水平。
+- 约 22.3% 的有效商业行缺少客户 ID；RFM、复购和 cohort 仅代表可识别客户。
+- 取消发票通常对应历史销售，但没有稳定的原销售—退货配对键，因此不宣称严格的订单退货概率。
+- 数据没有营销触点、获客成本、退货原因和履约信息，不进行 ROI 或因果归因。
+- RFM 五分位和 Wilson 区间用于排序调查与表达不确定性，不替代业务实验。
 
-日均销售额以筛选期日历天数为分母，不是实际营业天数。样本无客户唯一 ID，且仅有约三个月数据，不计算复购、留存、年度季节性或营销 ROI。
-样本采集机制和成本口径未核实，分析结果仅适用于当前样本。统计区间用于探索，未做多重比较校正，也不作因果解释。
+## 简历表述
+
+> **在线零售收入质量与客户留存分析平台｜Python、MySQL、DuckDB、Streamlit**
+> 构建 106 万条 UCI 零售交易的下载校验、异常分层、Parquet/MySQL 双存储、SQL 指标及交互看板；区分 £20.48M 销售额、£1.46M 退货与 £19.01M 净收入，并通过 RFM、月度 cohort 和 95% Wilson 区间识别 84.91% 英国市场集中及前 10% 客户贡献 63.02% 的收入集中；以 20 项 pytest、跨后端对账和 Playwright 浏览器检查保障可复现性。
+
+开发过程中使用 AI 编程助手协助检索、实现与审查；数据口径、统计假设、测试标准和最终代码由项目作者核验。设计取舍见 [项目设计](docs/项目设计.md) 与 [指标和统计方法](docs/指标与统计方法.md)。

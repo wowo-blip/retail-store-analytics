@@ -1,6 +1,8 @@
 {
-  "status": "already_loaded",
-  "rows": 1000,
-  "total": "322966.7490",
-  "source_sha256": "345f5ebec9f6a8f681507ed9e6b3ca8655b8c4e0f36a79e5f8603447c495c342"
+  "status": "inserted",
+  "rows": 1067371,
+  "source_sha256": "bcbe73b35f5b7babf197fb0cb983a11f5d9ff929078d4aa53d171b1f2df2e980",
+  "row_count": 1067371,
+  "sale_lines": "1007913",
+  "return_lines": "19104"
 }

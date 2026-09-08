@@ -1,22 +1,31 @@
 {
-  "rows": 1000,
-  "checks": {
+  "rows": 1067371,
+  "fatal_checks": {
     "missing_required": 0,
-    "duplicate_invoice": 0,
     "nonfinite_numeric": 0,
-    "invalid_quantity": 0,
-    "negative_amount": 0,
-    "invalid_rating": 0,
-    "cost_arithmetic": 0,
-    "tax_arithmetic": 0,
-    "total_arithmetic": 0,
-    "invalid_customer_type": 0,
-    "invalid_branch": 0,
-    "branch_city_mapping": 0
+    "zero_quantity": 0,
+    "date_out_of_range": 0
   },
-  "invalid_rows": 0,
+  "observations": {
+    "missing_description": 4382,
+    "missing_customer_id": 243007,
+    "exact_duplicate": 34335,
+    "cancellation_line": 19494,
+    "negative_quantity": 22950,
+    "nonpositive_price": 6207,
+    "excluded_line": 40354,
+    "sale_line": 1007913,
+    "return_line": 19104,
+    "cancellation_quantity_mismatch": 3458
+  },
+  "fatal_rows": 0,
   "passed": true,
-  "generated_at": "2026-09-07T04:19:50.992063+00:00",
-  "source_sha256": "345f5ebec9f6a8f681507ed9e6b3ca8655b8c4e0f36a79e5f8603447c495c342",
-  "source_file": "supermarket_sales.xlsx"
+  "date_min": "2009-12-01 07:45:00",
+  "date_max": "2011-12-09 12:50:00",
+  "countries": 43,
+  "invoices": 53628,
+  "known_customers": 5942,
+  "generated_at": "2026-09-08T04:26:58.183393+00:00",
+  "source_sha256": "bcbe73b35f5b7babf197fb0cb983a11f5d9ff929078d4aa53d171b1f2df2e980",
+  "source_file": "online_retail_II.xlsx"
 }

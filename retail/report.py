@@ -1,89 +1,115 @@
-"""从 MySQL 重算全部结果并输出可引用报告。"""
+"""从 MySQL 重算结果并生成可引用的中文分析报告。"""
 import json
 from datetime import datetime,timezone
-from .config import engine,REPORTS
+
+import pandas as pd
+
+from .config import REPORTS,engine
 from .queries import metadata,query
-from .statistics import cluster_bootstrap,standardized_means,decompose
+from .statistics import add_return_intervals,cohort_retention,customer_concentration,rfm_segments
 
 
-def md_table(df, digits=2):
-    cols=list(df.columns)
-    rows=['| '+' | '.join(cols)+' |','|'+'|'.join(['---']*len(cols))+'|']
-    for row in df.itertuples(index=False,name=None):
-        rows.append('| '+' | '.join(f'{x:,.{digits}f}' if isinstance(x,float) else str(x) for x in row)+' |')
-    return '\n'.join(rows)
+def md_table(frame,digits=2):
+    columns=list(frame.columns)
+    lines=['| '+' | '.join(columns)+' |','|'+'|'.join(['---']*len(columns))+'|']
+    for row in frame.itertuples(index=False,name=None):
+        values=[]
+        for value in row:
+            if isinstance(value,float):values.append(f'{value:,.{digits}f}')
+            else:values.append(str(value))
+        lines.append('| '+' | '.join(values)+' |')
+    return '\n'.join(lines)
 
 
 def main():
-    db=engine(); m=metadata(db)
-    frames={name:query(db,name,m['start'],m['end']) for name in ['kpis','stores','daily','categories','store_categories','monthly','details']}
-    days=(m['end']-m['start']).days+1
-    frames['stores']['revenue_per_calendar_day']=frames['stores'].revenue/days
-    ci=cluster_bootstrap(frames['details'])
-    block=cluster_bootstrap(frames['details'],block_days=7)
-    standardized,threshold=standardized_means(frames['details'])
-    frames.update(bootstrap=ci,bootstrap_block7=block,standardized=standardized)
+    db=engine();meta=metadata(db)
+    names=['kpis','monthly','countries','products','customers','cohorts','sample']
+    frames={name:query(db,name,meta['start'],meta['end']) for name in names}
+    kpi=frames['kpis'].iloc[0]
+    countries=add_return_intervals(frames['countries'])
+    customers=rfm_segments(frames['customers'],meta['end'])
+    concentration=customer_concentration(customers)
+    cohort_counts,retention=cohort_retention(frames['cohorts'],meta['end'])
+    frames.update(countries=countries,customers=customers)
     for name,frame in frames.items():
         frame.to_csv(REPORTS/f'{name}.csv',index=False,encoding='utf-8-sig')
-    ranked=frames['stores']; first,second=ranked.city.iloc[:2]
-    attribution=decompose(ranked,first,second)
-    summary=dict(generated_at=datetime.now(timezone.utc).isoformat(),source='MySQL retail_analytics.fact_sales',
-                 dates=[str(m['start']),str(m['end'])],calendar_days=days,
-                 kpis=frames['kpis'].iloc[0].to_dict(),leader=first,comparison=second,
-                 decomposition=attribution,bootstrap_repetitions=5000,bootstrap_seed=20260907,
-                 top_1pct_threshold=threshold)
-    (REPORTS/'summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
-    interval_text=[]
-    for row in ci.itertuples():
-        verdict='区间包含 0，尚不能清楚区分两店平均交易金额' if row.ci_low<=0<=row.ci_high else '区间未包含 0，提示样本期内存在均值差异'
-        interval_text.append(f'- {row.city_a} − {row.city_b}：差异 {row.difference:.2f}，95% 区间 [{row.ci_low:.2f}, {row.ci_high:.2f}]；{verdict}。')
-    report=f'''# 零售门店经营分析报告
 
-## 分析问题与数据
+    uk=countries[countries.country=='United Kingdom'].iloc[0]
+    international=countries[countries.country!='United Kingdom'].head(5)
+    products=frames['products'].head(10)
+    first_cohort=retention.iloc[0]
+    summary={
+        'generated_at':datetime.now(timezone.utc).isoformat(),
+        'source':'UCI Online Retail II / MySQL fact_retail_lines',
+        'dates':[str(meta['start']),str(meta['end'])],
+        'rows':meta['rows'],'kpis':kpi.to_dict(),
+        'uk_net_revenue_share':float(uk.net_revenue_share),
+        'positive_customer_top_10pct_share':concentration['top_share'],
+        'repeat_customer_rate':concentration['repeat_customer_rate'],
+        'first_cohort_m1_retention':float(first_cohort.get(1,float('nan'))),
+    }
+    (REPORTS/'summary.json').write_text(
+        json.dumps(summary,ensure_ascii=False,indent=2,default=str),encoding='utf-8'
+    )
 
-比较门店销售额，判断差异来自交易笔数还是平均交易金额，并考察品类构成、月份和大额交易的影响。
-数据来自原开源项目附带的 Excel 样例；本报告由 MySQL 查询结果生成。样本期 {m['start']} 至 {m['end']}，共 {days} 个日历日、{m['rows']} 笔交易，3 家门店、6 个商品类别。
-原界面标注 US $；实际币种和样本采集机制未独立核实，以下统一称“金额”，不把结果解释为真实企业现状。
+    international_table=international[['country','net_revenue','net_revenue_share','return_value_rate','sales_orders']].copy()
+    international_table.columns=['country','net_revenue','share','return_value_rate','sales_orders']
+    product_table=products[['stock_code','description','units_sold','returns_value','net_revenue']]
+    report=f'''# Online Retail II 收入质量、客户留存与退货分析
 
-## 门店表现与差异来源
+## 数据与问题
 
-{md_table(ranked[['city','transactions','units','revenue','average_transaction','revenue_per_calendar_day']])}
+分析 UCI Online Retail II 的 {meta['rows']:,} 条行级记录，时间为 {meta['start']} 至 {meta['end']}，覆盖 {meta['country_count']} 个国家或地区。金额单位为英镑。
+项目关注三个问题：销售额有多少最终转化为净收入；收入是否集中在单一市场或少数客户；哪些商品和市场出现更高的退货信号。
 
-销售额最高的 {first} 相比 {second} 高出 {attribution['difference']:.2f}。对称分解中，交易笔数项为 {attribution['transactions_effect']:.2f}，平均交易金额项为 {attribution['average_transaction_effect']:.2f}，两项相加等于销售额差异。这是恒等式分解，不是因果贡献。
-日均销售额分母为筛选期日历天数，不是已确认营业天数。
+销售行要求数量为正、价格为正、描述存在且不是完全重复；退货行使用负数量或取消发票标记识别。净收入 = 销售额 − 退货金额。缺失客户 ID 的记录保留在财务指标中，但不进入客户和 cohort 分析。
 
-## 平均交易金额差异与不确定性
+## 收入质量
 
-{chr(10).join(interval_text)}
+- 销售额：£{kpi.gross_sales:,.2f}
+- 退货金额：£{kpi.returns_value:,.2f}，占销售额 {kpi.returns_value/kpi.gross_sales:.2%}
+- 净收入：£{kpi.net_revenue:,.2f}
+- 销售订单：{int(kpi.sales_orders):,}；平均订单金额：£{kpi.average_order_value:,.2f}
 
-使用共同日期簇 Bootstrap：每次抽取同一组日期，同时保留这些日期内所有门店的交易，重新计算“总金额 / 交易笔数”并相减。5000 次，随机种子 20260907，百分位 95% 区间。
-按日期重抽样保留同日依赖，主分析仍假设日期簇之间足够独立；另以 7 日循环移动块检查短期序列相关的敏感性：
+2011 年 12 月仅记录到 9 日，因此不把该月与完整月份直接比较。退货按负数量行的记录时间归入月份；数据没有稳定的原销售—退货关联键。
 
-{md_table(block[['city_a','city_b','difference','ci_low','ci_high']])}
+## 市场集中
 
-这些是探索性的逐对区间，未做多重比较校正；区间包含 0 不等于证明门店完全相同。未知采样机制限制向总体推广，且门店只有 3 家，不估计门店总体的随机效应。
+英国贡献 £{uk.net_revenue:,.2f} 净收入，占全样本 {uk.net_revenue_share:.2%}。国际市场规模明显更小，不能在同一纵轴上只看绝对值后直接下结论。
 
-## 品类构成与大额交易敏感性
+净收入最高的五个国际市场：
 
-{md_table(standardized)}
+{md_table(international_table,4)}
 
-standardized_mean 按全样本各品类交易占比统一加权，比较相同类别构成下的均值；不控制类别内商品和顾客的其他差异。
-mean_without_top_1pct 仅用于敏感性分析：统一去除高于合并样本第 99 百分位（{threshold:.2f}）的交易后重新求均值。原数据库没有删掉这些交易。
+`return_value_rate` 是退货金额 / 销售额，用于风险筛查，不解释为商品质量或履约因果。
 
-## 按月份查看稳定性
+## 客户结构与留存
 
-{md_table(frames['monthly'])}
+有购买记录的已识别客户为 {len(customers):,}。在净收入为正的客户中：
 
-3 月只到 30 日，跨月总额不构成严格可比的完整月份增长率，因此不展示环比增长结论。
+- 至少有 2 个销售发票的复购客户占 {concentration['repeat_customer_rate']:.2%}；
+- 收入前 10% 客户贡献 {concentration['top_share']:.2%}，存在明显客户集中；
+- 最早 cohort 在次月仍有购买的客户占 {first_cohort.get(1,float('nan')):.2%}。
 
-## 可行建议与限制
+RFM 使用当前范围内 recency、frequency、monetary 五分位分层，目的是确定后续调查优先级，不把分层解释为营销措施的效果。
 
-- 先区分交易量和交易金额，再决定是否进一步调查客流、商品组合或定价；现有数据不能确认改善措施的实际效果。
-- 对比具体品类，优先调查品类结构差异；结合进店人数、营销和库存数据后才可评估转化、营销收益或缺货。
-- 没有客户唯一 ID，不计算复购、留存或 RFM；没有经过核实的成本口径，不做利润提升承诺。
-- 数据检查通过只说明本次检查范围内未发现问题，不保证样本代表性，也不把质量检查描述成大规模脏数据清洗。
+## 商品与退货信号
 
-可重现命令：`.venv/Scripts/python.exe -m retail.etl`，然后 `.venv/Scripts/python.exe -m retail.report`。
+净收入最高的商品编码：
+
+{md_table(product_table)}
+
+商品排行排除邮费、银行费用等服务代码。高退货金额率只表示需要结合退货原因、履约和商品质量数据继续调查。
+
+## 不确定性与限制
+
+- 各市场“退货相关发票占比”使用 95% Wilson 区间；小样本市场不会因为一个退货发票被误判为稳定高风险。
+- 取消发票通常对应历史销售，但缺少稳定配对键，不能计算严格的订单退货概率。
+- 原始数据约 {1-float(kpi.customer_id_line_coverage):.1%} 的有效商业行缺少客户 ID，客户留存和 RFM 仅代表可识别客户。
+- 数据为 2009—2011 年一家英国非门店零售商的历史记录，不外推为当前行业水平，也不作因果推断。
+- 收入集中、复购和退货发现是描述性证据；落地策略需要营销触点、获客成本、退货原因和履约数据。
+
+可重现流程：`python scripts/download_data.py` → `python -m retail.etl` → `python -m retail.report` → `python -m pytest -q`。
 '''
     (REPORTS/'经营分析报告.md').write_text(report,encoding='utf-8')
     print(json.dumps(summary,ensure_ascii=False,indent=2,default=str))

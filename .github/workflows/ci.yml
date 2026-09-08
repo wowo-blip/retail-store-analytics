@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: retail_analytics
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: retail_analytics
+      MYSQL_USER: retail_reader
+      MYSQL_PASSWORD: reader
+      MYSQL_ETL_USER: retail_etl
+      MYSQL_ETL_PASSWORD: etl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-lock.txt
+
+      - name: Create least-privilege database users
+        run: |
+          python - <<'PY'
+          import pymysql
+
+          connection = pymysql.connect(
+              host='127.0.0.1', port=3306, user='root', password='root', autocommit=True
+          )
+          with connection:
+              with connection.cursor() as cursor:
+                  cursor.execute("CREATE USER 'retail_etl'@'%' IDENTIFIED BY 'etl'")
+                  cursor.execute("CREATE USER 'retail_reader'@'%' IDENTIFIED BY 'reader'")
+                  cursor.execute(
+                      "GRANT SELECT, INSERT, CREATE, REFERENCES, INDEX "
+                      "ON retail_analytics.* TO 'retail_etl'@'%'"
+                  )
+                  cursor.execute(
+                      "GRANT SELECT ON retail_analytics.* TO 'retail_reader'@'%'"
+                  )
+          PY
+
+      - name: Import source and regenerate reports
+        run: |
+          python scripts/download_data.py
+          python -m retail.etl
+          python -m retail.report
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Install browser test runtime
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run dashboard browser smoke test
+        env:
+          RETAIL_DATA_MODE: demo
+        run: |
+          python -m streamlit run app.py --server.port=8510 --server.address=127.0.0.1 --server.headless=true --browser.gatherUsageStats=false > /tmp/streamlit.log 2>&1 &
+          node tests/dashboard-smoke.cjs

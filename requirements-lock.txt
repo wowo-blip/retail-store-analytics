@@ -7,6 +7,7 @@ cffi==2.1.1
 charset-normalizer==3.5.1
 click==8.5.0
 colorama==0.4.6
+duckdb==1.5.5
 cryptography==50.0.1
 et_xmlfile==2.0.0
 gitdb==4.0.12
@@ -41,7 +42,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 pytz==2026.3.post1
 pytz-deprecation-shim==0.1.0.post0
-pywin32==312
+pywin32==312; sys_platform == 'win32'
 referencing==0.37.0
 requests==2.34.2
 rich==13.9.4

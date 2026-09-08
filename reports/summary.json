@@ -1,27 +1,26 @@
 {
-  "generated_at": "2026-09-07T04:19:52.332553+00:00",
-  "source": "MySQL retail_analytics.fact_sales",
+  "generated_at": "2026-09-08T04:34:38.946450+00:00",
+  "source": "UCI Online Retail II / MySQL fact_retail_lines",
   "dates": [
-    "2021-01-01",
-    "2021-03-30"
+    "2009-12-01",
+    "2011-12-09"
   ],
-  "calendar_days": 89,
+  "rows": 1067371,
   "kpis": {
-    "transactions": 1000.0,
-    "units": 5510.0,
-    "revenue": 322966.749,
-    "average_transaction": 322.966749,
-    "average_rating": 6.9727,
-    "observed_days": 89.0
+    "gross_sales": 20476260.448,
+    "returns_value": 1462050.61,
+    "net_revenue": 19014209.838,
+    "sales_orders": 40077.0,
+    "return_orders": 8292.0,
+    "units_sold": 11205148.0,
+    "units_returned": 476819.0,
+    "known_customers": 5939.0,
+    "countries": 43.0,
+    "average_order_value": 510.92298445,
+    "customer_id_line_coverage": 0.7768
   },
-  "leader": "Naypyitaw",
-  "comparison": "Yangon",
-  "decomposition": {
-    "difference": 4368.335999999996,
-    "transactions_effect": -3896.72247492,
-    "average_transaction_effect": 8265.05847604001
-  },
-  "bootstrap_repetitions": 5000,
-  "bootstrap_seed": 20260907,
-  "top_1pct_threshold": 950.26575
+  "uk_net_revenue_share": 0.84908795,
+  "positive_customer_top_10pct_share": 0.6301534707407241,
+  "repeat_customer_rate": 0.7270858317628919,
+  "first_cohort_m1_retention": 0.35287958115183243
 }

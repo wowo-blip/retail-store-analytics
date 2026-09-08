@@ -25,7 +25,9 @@ def main():
         with conn.cursor() as cur:
             cur.execute('SELECT @@datadir')
             actual = Path(cur.fetchone()[0]).resolve()
-            assert actual == (ROOT / '.runtime/mysql-data').resolve(), '拒绝操作非项目实例'
+            expected = (ROOT / '.runtime/mysql-data').resolve()
+            if actual != expected:
+                raise RuntimeError(f'拒绝操作非项目实例：数据目录应为 {expected}，实际为 {actual}')
             cur.execute("ALTER USER 'root'@'localhost' IDENTIFIED BY %s", (credentials['root'],))
             cur.execute('CREATE DATABASE IF NOT EXISTS retail_analytics CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci')
             for name, key in [('retail_etl', 'etl'), ('retail_reader', 'reader')]:

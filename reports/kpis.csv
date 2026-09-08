@@ -1,2 +1,2 @@
-﻿transactions,units,revenue,average_transaction,average_rating,observed_days
-1000,5510.0,322966.749,322.966749,6.9727,89
+﻿gross_sales,returns_value,net_revenue,sales_orders,return_orders,units_sold,units_returned,known_customers,countries,average_order_value,customer_id_line_coverage
+20476260.448,1462050.61,19014209.838,40077,8292,11205148.0,476819.0,5939,43,510.92298445,0.7768

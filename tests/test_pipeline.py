@@ -1,92 +1,156 @@
-"""关键口径与边界测试；数据库测试只读，不修改业务表。"""
-from decimal import Decimal
+"""UCI 数据契约、双后端指标和统计边界测试。"""
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 from sqlalchemy import text
-from retail.etl import read_source,validate
-from retail.config import engine
-from retail.queries import metadata,query
-from retail.statistics import cluster_bootstrap,decompose,standardized_means
 
-@pytest.fixture(scope='module')
-def source():return read_source()
+from retail.config import PROCESSED,REPORTS,SOURCE,SOURCE_ZIP,SOURCE_ZIP_SHA256,engine
+from retail.demo import metadata as demo_metadata,query as demo_query
+from retail.etl import source_sha256,transform,validate
+from retail.queries import metadata as mysql_metadata,query as mysql_query
+from retail.statistics import add_return_intervals,cohort_retention,customer_concentration,rfm_segments,wilson_interval
+from scripts.download_data import file_sha256
+
 
 @pytest.fixture(scope='module')
 def db():return engine()
 
-def test_source_quality(source):
-    report,bad=validate(source)
-    assert report['passed'] and len(source)==1000 and not bad.any()
+
+@pytest.fixture(scope='module')
+def bounds(db):return mysql_metadata(db)
+
+
+def raw_fixture():
+    return pd.DataFrame([
+        [1,'Year 2010-2011',2,'500001','abc','Product A',2,pd.Timestamp('2011-01-01 10:00'),3.5,12345,'United Kingdom'],
+        [2,'Year 2010-2011',3,'C500002','ABC','Product A',-1,pd.Timestamp('2011-01-02 10:00'),3.5,12345,'United Kingdom'],
+        [3,'Year 2010-2011',4,'500001','abc','Product A',2,pd.Timestamp('2011-01-01 10:00'),3.5,12345,'United Kingdom'],
+        [4,'Year 2010-2011',5,'500003','POST','Postage',1,pd.Timestamp('2011-01-03 10:00'),10.0,pd.NA,'France'],
+        [5,'Year 2010-2011',6,'500004','XYZ','Unknown',1,pd.Timestamp('2011-01-04 10:00'),-1.0,pd.NA,'France'],
+    ],columns=['line_id','source_sheet','source_row','invoice_id','stock_code','description','quantity','invoice_at','unit_price','customer_id','country'])
+
+
+def test_official_download_hashes_match_fixed_version():
+    assert file_sha256(SOURCE_ZIP)==SOURCE_ZIP_SHA256
+    assert source_sha256(SOURCE)=='bcbe73b35f5b7babf197fb0cb983a11f5d9ff929078d4aa53d171b1f2df2e980'
+
+
+def test_processed_snapshot_contract():
+    frame=pd.read_parquet(PROCESSED,columns=['line_id','stock_code','transaction_type'])
+    assert len(frame)==1_067_371
+    assert frame.line_id.is_unique
+    assert (frame.stock_code.dropna()==frame.stock_code.dropna().str.upper()).all()
+    assert frame.transaction_type.value_counts().to_dict()=={
+        'sale':1_007_913,'excluded':40_354,'return':19_104,
+    }
+
+
+def test_transform_classifies_sales_returns_duplicates_and_services():
+    result=transform(raw_fixture())
+    assert result.transaction_type.tolist()==['sale','return','excluded','sale','excluded']
+    assert result.is_duplicate.tolist()==[False,False,True,False,False]
+    assert result.is_service_line.tolist()==[False,False,False,True,False]
+    assert result.line_amount.tolist()==[7.0,-3.5,7.0,10.0,-1.0]
+    report,bad=validate(result)
+    assert report['passed'] and not bad.any()
+    assert report['observations']['missing_customer_id']==2
+
 
 @pytest.mark.parametrize('field,value,check',[
-    ('quantity',0,'invalid_quantity'),('total',-1,'negative_amount'),
-    ('rating',11,'invalid_rating'),('total',9999,'total_arithmetic'),
-    ('city',pd.NA,'missing_required'),('unit_price',np.inf,'nonfinite_numeric'),
+    ('quantity',0,'zero_quantity'),
+    ('unit_price',np.inf,'nonfinite_numeric'),
+    ('invoice_at',pd.Timestamp('2012-01-01'),'date_out_of_range'),
+    ('country',pd.NA,'missing_required'),
 ])
-def test_reject_corrupt_data(source,field,value,check):
-    df=source.copy();df.loc[0,field]=value
-    report,bad=validate(df)
-    assert not report['passed'] and report['checks'][check]>0 and bad.iloc[0]
+def test_validate_rejects_structural_errors(field,value,check):
+    frame=transform(raw_fixture());frame.loc[0,field]=value
+    report,bad=validate(frame)
+    assert not report['passed'] and report['fatal_checks'][check]>0 and bad.iloc[0]
 
-def test_duplicate_key_is_rejected(source):
-    df=pd.concat([source,source.iloc[:1]],ignore_index=True)
-    assert validate(df)[0]['checks']['duplicate_invoice']==2
 
-def test_sql_source_and_decimal_reconcile(source,db):
-    m=metadata(db); k=query(db,'kpis',m['start'],m['end']).iloc[0]
-    assert k.transactions==len(source)
-    assert k.units==source.quantity.sum()
-    with db.connect() as conn:
-        sql_total=conn.execute(text('SELECT SUM(total) FROM fact_sales')).scalar()
-    assert sql_total==sum(map(lambda x:Decimal(str(x)),source.total))
-    for name in ['stores','daily','categories','store_categories','monthly']:
-        assert query(db,name,m['start'],m['end']).revenue.sum()==pytest.approx(float(sql_total),abs=1e-6)
+def test_quality_report_discloses_expected_anomalies():
+    quality=json.loads((REPORTS/'quality.json').read_text(encoding='utf-8'))
+    assert quality['passed'] and quality['fatal_rows']==0
+    assert quality['observations']['exact_duplicate']==34_335
+    assert quality['observations']['missing_customer_id']==243_007
+    assert quality['observations']['nonpositive_price']==6_207
 
-def test_sql_filters_and_calendar_boundary(source,db):
-    start=pd.Timestamp('2021-02-01').date();end=pd.Timestamp('2021-02-28').date()
-    filtered=source[(source.sale_date.dt.date>=start)&(source.sale_date.dt.date<=end)&(source.city=='Yangon')&(source.customer_type=='Member')]
-    k=query(db,'kpis',start,end,['Yangon'],['Member']).iloc[0]
-    assert k.transactions==len(filtered)
-    assert k.revenue==pytest.approx(filtered.total.sum())
-    assert query(db,'kpis',start,end,[]).iloc[0].transactions==0
-    assert query(db,'kpis',start,end,["Yangon' OR 1=1 --"]).iloc[0].transactions==0
-    with pytest.raises(ValueError):query(db,'kpis',end,start)
 
-def test_reader_has_only_select(db):
-    with db.connect() as conn:
-        grants=conn.execute(text('SHOW GRANTS')).scalars().all()
-    assert any('GRANT SELECT ON' in s for s in grants)
-    assert not any('INSERT' in s or 'ALL PRIVILEGES' in s for s in grants)
+def test_mysql_row_counts_and_financial_identity(db,bounds):
+    kpi=mysql_query(db,'kpis',bounds['start'],bounds['end']).iloc[0]
+    assert bounds['rows']==1_067_371
+    assert kpi.sales_orders==40_077 and kpi.return_orders==8_292
+    assert kpi.gross_sales==pytest.approx(20_476_260.448,abs=.001)
+    assert kpi.returns_value==pytest.approx(1_462_050.61,abs=.001)
+    assert kpi.net_revenue==pytest.approx(kpi.gross_sales-kpi.returns_value,abs=.001)
 
-def test_decomposition_identity(db):
-    m=metadata(db);s=query(db,'stores',m['start'],m['end'])
-    result=decompose(s,'Naypyitaw','Yangon')
-    assert result['transactions_effect']<0 and result['average_transaction_effect']>0
-    assert result['difference']==pytest.approx(result['transactions_effect']+result['average_transaction_effect'],abs=0.0001)
 
-def paired_fixture():
-    rows=[]
-    for i,date in enumerate(pd.date_range('2021-01-01',periods=40)):
-        for city,offset in [('A',0),('B',5)]:
-            rows.append(dict(sale_date=date,city=city,total=float(i+10+offset),product_line='same'))
-    return pd.DataFrame(rows)
+def test_filters_are_bound_and_date_end_is_inclusive(db):
+    start=pd.Timestamp('2011-01-01').date();end=pd.Timestamp('2011-01-31').date()
+    mysql=mysql_query(db,'kpis',start,end,['Germany']).iloc[0]
+    demo=demo_query('kpis',start,end,['Germany']).iloc[0]
+    assert mysql.sales_orders==demo.sales_orders
+    assert mysql.net_revenue==pytest.approx(demo.net_revenue,rel=1e-7)
+    injected=mysql_query(db,'kpis',start,end,["Germany' OR 1=1 --"]).iloc[0]
+    assert injected.sales_orders==0
+    with pytest.raises(ValueError):mysql_query(db,'kpis',end,start)
 
-@pytest.mark.parametrize('block',[1,7])
-def test_paired_cluster_preserves_day_effect(block):
-    result=cluster_bootstrap(paired_fixture(),repetitions=500,block_days=block).iloc[0]
-    assert result.status=='ok'
-    assert result.difference==pytest.approx(-5)
-    assert result.ci_low==pytest.approx(-5) and result.ci_high==pytest.approx(-5)
 
-def test_bootstrap_reproducible_and_insufficient():
-    data=paired_fixture()
-    pd.testing.assert_frame_equal(cluster_bootstrap(data,100),cluster_bootstrap(data,100))
-    assert cluster_bootstrap(data.iloc[:10],100).iloc[0].status=='insufficient_data'
-    assert cluster_bootstrap(data[data.city=='A'],100).empty
+def test_reader_is_select_only(db):
+    with db.connect() as connection:
+        grants=connection.execute(text('SHOW GRANTS')).scalars().all()
+    assert any('GRANT SELECT ON' in grant for grant in grants)
+    assert not any('INSERT' in grant or 'ALL PRIVILEGES' in grant for grant in grants)
 
-def test_standardization_does_not_impute_missing_category():
-    d=pd.DataFrame({'city':['A','A','B'],'product_line':['X','Y','X'],'total':[10.,20.,30.]})
-    result,_=standardized_means(d)
-    assert pd.isna(result.set_index('city').loc['B','standardized_mean'])
-    assert result.set_index('city').loc['A','standardized_mean']==pytest.approx(40/3)
+
+@pytest.mark.parametrize('name,sort_by,ignore',[
+    ('kpis',[],[]),('monthly',['month'],[]),('countries',['country'],[]),
+    ('products',['stock_code'],['description']),('customers',['customer_id'],[]),
+    ('cohorts',['cohort_month','activity_month'],[]),
+])
+def test_duckdb_matches_mysql(db,bounds,name,sort_by,ignore):
+    actual=mysql_query(db,name,bounds['start'],bounds['end'])
+    expected=demo_query(name,bounds['start'],bounds['end'])
+    if sort_by:
+        actual=actual.sort_values(sort_by).reset_index(drop=True)
+        expected=expected.sort_values(sort_by).reset_index(drop=True)
+    actual=actual.drop(columns=ignore)
+    expected=expected.drop(columns=ignore)
+    pd.testing.assert_frame_equal(actual,expected,check_dtype=False,rtol=1e-4,atol=1e-4)
+
+
+def test_wilson_interval_and_country_enrichment():
+    low,high=wilson_interval([5],[10])
+    assert low[0]==pytest.approx(.2366,abs=.001)
+    assert high[0]==pytest.approx(.7634,abs=.001)
+    countries=pd.DataFrame({'sales_orders':[90],'return_orders':[10],'returns_value':[50.],'gross_sales':[1000.]})
+    result=add_return_intervals(countries).iloc[0]
+    assert result.return_invoice_share==pytest.approx(.1)
+    assert result.return_value_rate==pytest.approx(.05)
+
+
+def test_rfm_cohorts_and_concentration_boundaries():
+    customers=pd.DataFrame({
+        'customer_id':range(1,11),'last_purchase_at':pd.date_range('2011-01-01',periods=10),
+        'sales_orders':range(1,11),'net_revenue':np.arange(10,110,10),
+    })
+    segmented=rfm_segments(customers,pd.Timestamp('2011-01-31'))
+    assert segmented.segment.notna().all()
+    concentration=customer_concentration(segmented)
+    assert concentration['customers']==10 and 0<concentration['top_share']<=1
+    cohorts=pd.DataFrame({
+        'cohort_month':pd.to_datetime(['2011-01-01','2011-01-01']),
+        'activity_month':pd.to_datetime(['2011-01-01','2011-02-01']),
+        'month_number':[0,1],'active_customers':[100,30],
+    })
+    counts,retention=cohort_retention(cohorts,pd.Timestamp('2011-02-28'))
+    assert counts.loc[pd.Timestamp('2011-01-01'),1]==30
+    assert retention.loc[pd.Timestamp('2011-01-01'),1]==pytest.approx(.3)
+
+
+def test_metadata_matches_between_backends(bounds):
+    demo=demo_metadata()
+    for key in ('start','end','rows','invoices','country_count','countries'):
+        assert bounds[key]==demo[key]
