@@ -33,9 +33,9 @@ jobs:
       MYSQL_ETL_PASSWORD: etl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
@@ -81,6 +81,10 @@ jobs:
       - name: Run dashboard browser smoke test
         env:
           RETAIL_DATA_MODE: demo
+          EXPECT_MODE: demo
         run: |
           python -m streamlit run app.py --server.port=8510 --server.address=127.0.0.1 --server.headless=true --browser.gatherUsageStats=false > /tmp/streamlit.log 2>&1 &
-          node tests/dashboard-smoke.cjs
+          if ! node tests/dashboard-smoke.cjs; then
+            cat /tmp/streamlit.log
+            exit 1
+          fi
